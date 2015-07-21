@@ -18,6 +18,7 @@ import (
 
 type SqlStruct struct{
 	GoFile string
+	DbName string 
 	sqldb *sql.DB
 	Tables []Table
 }
@@ -36,8 +37,8 @@ type Column struct {
 	ForeignKey string
 }
 
-func NewSqlStruct(goFileName string) (*SqlStruct,error) {
-    db, err := sql.Open("mysql", "root:root@/ihome")
+func NewSqlStruct(goFileName,dbName,userName,PassWD  string) (*SqlStruct,error) {
+    db, err := sql.Open("mysql", userName+":"+PassWD+"@/"+dbName)
     if err != nil {
         log.Fatalf("Open database error: %s\n", err)
     }
@@ -47,12 +48,12 @@ func NewSqlStruct(goFileName string) (*SqlStruct,error) {
         log.Fatal(err)
 		return nil,nil  
     } else{
-	return &SqlStruct{GoFile:goFileName,sqldb:db},nil
+	return &SqlStruct{GoFile:goFileName,DbName:dbName,sqldb:db},nil
 	}
 	
 }
 func (slt *SqlStruct) BuildTableStruct()  {
-    rows, err := slt.sqldb.Query(`select table_name from information_schema.tables where table_type="base table"`)
+    rows, err := slt.sqldb.Query(`select table_name from information_schema.tables where TABLE_SCHEMA=? and  table_type="base table"`,slt.DbName)
     if err != nil {
         log.Println(err)
     } 
@@ -80,8 +81,11 @@ func (slt *SqlStruct) mysqlToGo(col_type string) string  {
 	
 	  if stype == "TIMESTAMP" { return "time.Time"}
 	  if stype == "DATETIME" { return "time.Time"}
+	  if stype == "DATE" { return "time.Time"}
+	  if stype == "TIME" { return "time.Time"}
 	  if stype == "BOOL" { return "bool"}
-	  return ""
+	  if stype == "BIT" { return "bool"}
+	  return "string"
 }
 func (slt *SqlStruct) createTableColumns(table_name string)  {
 	table:=Table{Table_name:table_name}
@@ -107,11 +111,12 @@ func (slt *SqlStruct) createTableColumns(table_name string)  {
 		col.Type=slt.mysqlToGo(DATA_TYPE)
 		if EXTRA !=""{
 		  if COLUMN_KEY=="PRI"{
-		    col.Type=col.Type+` "orm:"pk;auto"`
-			} else {col.Type=col.Type+`"orm:"auto"`
+		    col.Type=col.Type+" `"+`"orm:"pk;auto"`+"`"
+			} else {
+			  col.Type=col.Type+" `"+`"orm:"auto"`+"`"
 		  }
 		}else{
-		  if COLUMN_KEY=="PRI"{col.Type=col.Type+` "orm:"pk"`}		
+		  if COLUMN_KEY=="PRI"{col.Type=col.Type+" `"+` "orm:"pk"`+"`"}		
 		}
 		//col.IsPrimary=COLUMN_KEY=="PRI"
 		table.Columns=append(table.Columns,col)
@@ -131,7 +136,7 @@ func GetCurrPath() string {
 }
 
 func main() {
-	SqlStruct,err:=NewSqlStruct("my.go")
+	SqlStruct,err:=NewSqlStruct("my.go","game","root","root")
 	defer SqlStruct.sqldb.Close()
 	if err !=nil{
 	  os.Exit(0)	
@@ -150,13 +155,12 @@ func main() {
 
 	tmpl := template.New("my tmp")
 	tmpl,_ = tmpl.Parse(
-	`package {{ .GoFile}} 
-import{ "time",
-   "github.com/astaxie/beego/orm"}
+	`package models
+import( "time")
 {{range .Tables}} 
 type {{.Table_name}} struct{        
   {{range .Columns}}
-       {{.Name}}:{{.Type}}
+       {{.Name}} {{.Type}}
   {{end}}  }	         
 {{end}} `)
     //fmt.Println(len(SqlStruct.Tables)) 
