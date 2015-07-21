@@ -1,0 +1,1 @@
+Beego Sample MySQL Table Struct Convert Go File
